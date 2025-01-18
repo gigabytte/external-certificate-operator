@@ -1,0 +1,101 @@
+# HELM VALUE DEFAULTS
+controllerManager:
+  createRbac: false # defined in bootstrap
+  serviceAccount:
+    create: false
+    name: sample-sa # defined in bootstrap
+    annotations: {}
+  kubeRbacProxy:
+    args:
+    - --secure-listen-address=0.0.0.0:8443
+    - --upstream=http://127.0.0.1:8080/
+    - --logtostderr=true
+    - --v=0
+    - --tls-cert-file=/etc/tls/tls.crt
+    - --tls-private-key-file=/etc/tls/tls.key
+    image:
+      repository: artifacts-qa.external-certificate.io/certificate-distribution-op/kube-rbac-proxy
+      tag: v0.16.0
+      pullPolicy: IfNotPresent
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 5m
+        memory: 64Mi
+  manager:
+    args:
+    - --health-probe-bind-address=:8081
+    - --metrics-bind-address=127.0.0.1:8080
+    - --leader-elect
+    - --allowed-import-cross-namespaces=""
+    image:
+      repository: artifacts-qa.external-certificate.io/certificate-distribution-op/caas-certificate-distribution-operator
+      tag: 1.0.0
+      pullPolicy: IfNotPresent
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+  replicaCount: 2 # Should be 3 for production HA
+  nodeSelector:
+    kubernetes.io/os: linux
+    kubernetes.azure.com/agentpool: pool001
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+kubernetesClusterDomain: cluster.local
+metrics:
+  ports:
+  - name: https
+    port: 8443
+    protocol: TCP
+    targetPort: https
+  type: ClusterIP
+caBundle: # The Internal CTC CA bundle for the webhook server to use for serving TLS.
+  createSecret: false `# If set to true, will create a k8s secret with desired ca cert value`
+  name: ca-secret # Ideally to be seeded by Trust manager
+  key: ca.crt # Defaults to ca.crt if not set
+  #value: | # Setting inline will create a k8s secret with desired ca cert value
+    #  -----BEGIN CERTIFICATE-----
+    #  -----END CERTIFICATE-----
+# Webhook service for the controller manager
+webhookService:
+  ports:
+  - port: 443
+    protocol: TCP
+    targetPort: 9443
+  type: ClusterIP
+# Will create certificate for webhook comms if provided
+# Requires Cert-Manager to be installed on clusters
+  certificate:
+    create: false
+#    issuerRef:
+#      group: jetstack.io
+#      kind: VenafiIssuer
+#      name: sample-issuer # defined in bootstrap
+# ------------------------------------------------------
+# For clusters without Cert-Manager installed, the following can be used to scrap TLS cert from AKV
+# Certificate secret will be mounted via CSI driver
+  csiDriverTLSMount:
+    enabled: true
+    keyvaultName: sample-kv # Azure Key Vault Name
+    clientId: 1c98fc95-xxxxxxxxxxx-922bc510ccc1 # Client ID with federated creds to read secrets from AKV
+    tenantId: bd6704ff-xxxxxxxxxx-c30d6f5133c5 # Azure Tenant ID
+    akvSecretObjects:
+      - objectName: secret-tlscrt # Secret name in AKV for TLS Cert
+        objectType: secret
+      - objectName: secret-tlskey # Secret name in AKV for TLS Key
+        objectType: secret
+    k8sSecretObjects:
+      - secretName: secret # Destination secret to be create in k8s
+        type: Opaque
+        data:
+          - key: tls.crt # Key in destination secret for TLS Cert
+            objectName: secret-tlscrt
+          - key: tls.key
+            objectName: secret-tlskey # Key in destination secret for TLS Key
+# ------------------------------------------------------

@@ -1,0 +1,288 @@
+---
+trigger:
+  - "main"
+
+variables:
+  - name: projectName
+    value: "managed-001"
+  - name: devDockerRepoName
+    value: "docker-local"
+  - name: devHelmRepoName
+    value: "helm-local"
+  - name: dockerImageName
+    value: "external-certificate-operator"
+  - name: devDockerRegistry
+    value: "acr-foo.io"
+  - name: agentPool
+    value: ctc-shared-pool-linux
+  - name: goVersion
+    value: "1.22.6"
+  - name: artifactoryConnection
+    value: "acr-foo.io"
+  - name: jfrogxrayServiceConnection
+    value: "xray-acr-foo.io"
+  - name: operatorHelmChartPath
+    value: "charts/operator"
+  - name: crdHelmChartPath
+    value: "charts/crds"
+  - name: artifactoryDockerServiceConn
+    value: "docker.acr-foo.io"
+  - name: helmQaArtifactoryServiceConn
+    value: "docker.acr-foo.io"
+  - name: helmVersion
+    value: '3.16.2'
+
+stages:
+  - stage: CheckVersionStage
+    jobs:
+      - job: CheckVersionJob
+        pool: $(agentPool)
+        steps:
+          - template: /general/get_version.yml@ctc_templates
+          - template: /general/check_version.yml@ctc_templates
+
+  ### GHAzDO Scan Stage
+  - stage: GHAzDOScanStage
+    dependsOn:
+      - CheckVersionStage
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'))
+    variables:
+      appVersion: $[stageDependencies.CheckVersionStage.CheckVersionJob.outputs['VersionObj.appVer']]
+    jobs:
+      - job: GHAzDoScans
+        pool: $(agentPool)
+        steps:
+          - task: AdvancedSecurity-Dependency-Scanning@1
+          - task: AdvancedSecurity-Codeql-Init@1
+            inputs:
+              languages: "go"
+          - task: AdvancedSecurity-Codeql-Autobuild@1
+          - task: AdvancedSecurity-Codeql-Analyze@1
+
+  ### HelmChart Build Stage
+  - stage: HelmChartBuildStage
+    dependsOn:
+      - CheckVersionStage
+    condition: succeeded()
+    variables:
+      appVersion: $[stageDependencies.CheckVersionStage.CheckVersionJob.outputs['VersionObj.appVer']]
+    jobs:
+      - job: HelmValidation
+        condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'))
+        pool: $(agentPool)
+        steps:
+          - task: GoTool@0
+            inputs:
+              version: $(goVersion)
+          - task: HelmInstaller@1
+            displayName: Install HELM $(helmVersion)
+            inputs:
+              helmVersionToInstall: $(helmVersion)
+          - task: CmdLine@2
+            displayName: 'HelmChart Lint'
+            inputs:
+              script: |
+                set -e
+                helm lint $(crdHelmChartPath)
+                helm lint $(operatorHelmChartPath)
+          - task: CmdLine@2
+            displayName: 'Validate CRD Helm Chart Version'
+            inputs:
+              script: |
+                set -e
+                # Path to the Chart.yaml file
+                chart_file="$(crdHelmChartPath)/Chart.yaml"
+
+                # Extract appVersion and version from Chart.yaml
+                chart_app_version=$(grep 'appVersion:' "$chart_file" | awk '{print $2}' | tr -d '"')
+                chart_version=$(grep 'version:' "$chart_file" | awk '{print $2}' | tr -d '"')
+
+                # Compare the extracted values with the user-provided string
+                if [[ "$chart_app_version" == "$(appVersion)" && "$chart_version" == "$(appVersion)" ]]; then
+                  echo "Helm Chart version matched VERSION file: $(appVersion)"
+                else
+                  echo "HelmChart Versions don't match VERSION file:"
+                  echo "Chart appVersion: $chart_app_version"
+                  echo "Chart version: $chart_version"
+                  echo "VERSION file: $(appVersion)"
+                  exit 1
+                fi
+          - task: CmdLine@2
+            displayName: 'Validate Operator Helm Chart Version'
+            inputs:
+              script: |
+                set -e
+                # Path to the Chart.yaml file
+                chart_file="$(operatorHelmChartPath)/Chart.yaml"
+
+                # Extract appVersion and version from Chart.yaml
+                chart_app_version=$(grep 'appVersion:' "$chart_file" | awk '{print $2}' | tr -d '"')
+                chart_version=$(grep 'version:' "$chart_file" | awk '{print $2}' | tr -d '"')
+
+                # Compare the extracted values with the user-provided string
+                if [[ "$chart_app_version" == "$(appVersion)" && "$chart_version" == "$(appVersion)" ]]; then
+                  echo "Helm Chart version matched VERSION file: $(appVersion)"
+                else
+                  echo "HelmChart Versions don't match VERSION file:"
+                  echo "Chart appVersion: $chart_app_version"
+                  echo "Chart version: $chart_version"
+                  echo "VERSION file: $(appVersion)"
+                  exit 1
+                fi
+      - job: HelmPackageStage
+        pool: $(agentPool)
+        steps:
+          - task: Docker@2
+            displayName: Log into Jfrog Helm Registry
+            inputs:
+              command: login
+              containerRegistry: $(helmQaArtifactoryServiceConn)
+          - task: CmdLine@2
+            displayName: 'Package Dev Helm Chart'
+            condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'))
+            inputs:
+              script: |
+                set -e
+                echo "Packaging Operator Helm Chart ..."
+                helm package $(operatorHelmChartPath) --destination=$(operatorHelmChartPath) --version=$(appVersion)-$(Build.BuildNumber)
+
+                echo "Packaging Operator CRD Helm Chart ..."
+                helm package $(crdHelmChartPath) --destination=$(crdHelmChartPath) --version=$(appVersion)-$(Build.BuildNumber)
+          - task: CmdLine@2
+            displayName: 'Push Dev Helm Chart'
+            condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'))
+            inputs:
+              script: |
+                set -e
+                echo "Pushing Operator Helm Chart ..."
+                helm push $(operatorHelmChartPath)/certificate-distribution-op-$(appVersion)-$(Build.BuildNumber).tgz oci://$(devDockerRegistry)/$(devHelmRepoName)
+
+                echo "Pushing CRD Helm Chart ..."
+                helm push $(crdHelmChartPath)/certificate-distribution-op-crd-$(appVersion)-$(Build.BuildNumber).tgz oci://$(devDockerRegistry)/$(devHelmRepoName)
+          - task: CmdLine@2
+            displayName: 'Package Helm Chart'
+            condition: and(succeeded(),eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+            inputs:
+              script: |
+                set -e
+                echo "Packaging Operator Helm Chart ..."
+                helm package $(operatorHelmChartPath) --destination=$(operatorHelmChartPath)
+
+                echo "Packaging Operator CRD Helm Chart ..."
+                helm package $(crdHelmChartPath) --destination=$(crdHelmChartPath)
+          - task: CmdLine@2
+            displayName: 'Push Helm Chart'
+            condition: and(succeeded(),eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+            inputs:
+              script: |
+                set -e
+                echo "Pushing Operator Helm Chart ..."
+                helm push $(operatorHelmChartPath)/certificate-distribution-op-$(appVersion).tgz oci://$(devDockerRegistry)/$(devHelmRepoName)
+
+                echo "Pushing CRD Helm Chart ..."
+                helm push $(crdHelmChartPath)/certificate-distribution-op-crd-$(appVersion).tgz oci://$(devDockerRegistry)/$(devHelmRepoName)
+
+  - stage: GoBuildStage
+    dependsOn:
+      - CheckVersionStage
+    condition: succeeded()
+    variables:
+      appVersion: $[stageDependencies.CheckVersionStage.CheckVersionJob.outputs['VersionObj.appVer']]
+    jobs:
+      - job: BuildJob
+        pool: $(agentPool)
+        steps:
+          - template: /go/go-task-ci.yml@ctc_templates
+            parameters:
+              goVersion: $(goVersion)
+              adoPat: $(ADO_PAT)
+
+  ### Docker Build Stage
+  - stage: DockerBuildStage
+    dependsOn:
+      - CheckVersionStage
+    condition: succeeded()
+    variables:
+      appVersion: $[stageDependencies.CheckVersionStage.CheckVersionJob.outputs['VersionObj.appVer']]
+    jobs:
+      - job: BuildStage
+        pool: $(agentPool)
+        steps:
+          - task: Docker@2
+            displayName: Log into Jfrog Artifactory
+            inputs:
+              command: login
+              containerRegistry: $(artifactoryDockerServiceConn)
+          - task: Docker@2
+            displayName: 'Build Docker Image'
+            inputs:
+              command: build
+              repository: $(devDockerRepoName)/$(dockerImageName)
+              dockerfile: Dockerfile
+              buildContext: .
+              tags: |
+                latest
+                $(appVersion)-$(Build.BuildNumber)
+                $(appVersion)
+
+          - task: JFrogDocker@1
+            condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'))
+            inputs:
+              command: 'Push'
+              artifactoryConnection: $(artifactoryConnection)
+              imageName: $(devDockerRegistry)/$(devDockerRepoName)/$(dockerImageName):$(appVersion)-$(Build.BuildNumber)
+              collectBuildInfo: true
+              buildName: '$(Build.BuildNumber)'
+              buildNumber: '$(Build.BuildNumber)'
+              skipLogin: false
+            displayName: 'Push testing Docker Image to Artifactory'
+
+          - task: JFrogDocker@1
+            condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'))
+            displayName: 'Scan Docker Image with Xray'
+            inputs:
+              command: 'Scan'
+              xrayConnection: $(jfrogxrayServiceConnection)
+              imageName: $(devDockerRegistry)/$(devDockerRepoName)/$(dockerImageName):$(appVersion)-$(Build.BuildNumber)
+              repoPath: $(repoPath)
+              watchesSource: repoPath
+
+          - task: JFrogDocker@1
+            condition: and(succeeded(),eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+            inputs:
+              command: 'Push'
+              artifactoryConnection: $(artifactoryConnection)
+              imageName: $(devDockerRegistry)/$(devDockerRepoName)/$(dockerImageName):$(appVersion)
+              collectBuildInfo: true
+              buildName: '$(Build.BuildNumber)'
+              buildNumber: '$(Build.BuildNumber)'
+              skipLogin: false
+            displayName: 'Push Dev Docker Image to Artifactory'
+          - script: |
+              IMAGE_NAME=$(devDockerRegistry)/$(devDockerRepoName)/$(dockerImageName)
+              # List all tags of the given image
+              TAGS=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "^${IMAGE_NAME}:")
+
+              # Remove all tags
+              for TAG in $TAGS; do
+                echo "Removing image: $TAG"
+                docker rmi -f $TAG
+              done
+            displayName: 'Cleanup Docker layers generated during build'
+
+  - stage: TagReleaseStage
+    dependsOn:
+      - CheckVersionStage
+      - DockerBuildStage
+      - HelmChartBuildStage
+      - GoBuildStage
+    condition: and(succeeded(),eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    variables:
+      appVersion: $[stageDependencies.CheckVersionStage.CheckVersionJob.outputs['VersionObj.appVer']]
+    jobs:
+      - job: TagReleaseJob
+        pool: $(agentPool)
+        steps:
+          - template: /general/tag_release.yml@ctc_templates
+            parameters:
+              appVersion: $(appVersion)

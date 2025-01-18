@@ -1,0 +1,81 @@
+# HELM VALUE DEFAULTS
+controllerManager:
+  createRbac: true # defined in bootstrap
+  serviceAccount:
+    create: false
+    name: cert-dist-op-sa # defined in bootstrap
+    annotations: {}
+  kubeRbacProxy:
+    args:
+    - --secure-listen-address=0.0.0.0:8443
+    - --upstream=http://127.0.0.1:8080/
+    - --logtostderr=true
+    - --v=0
+    - --tls-cert-file=/etc/tls/tls.crt
+    - --tls-private-key-file=/etc/tls/tls.key
+    image:
+      repository: kubebuilder/kube-rbac-proxy
+      tag: v0.16.0
+      pullPolicy: Always
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 5m
+        memory: 64Mi
+  manager:
+    args:
+    - --health-probe-bind-address=:8081
+    - --metrics-bind-address=127.0.0.1:8080
+    - --leader-elect
+    - --allowed-import-cross-namespaces=""
+    image:
+      repository: cdotestqa001ccacr.azurecr.io/caas-certificate-distribution-operator
+      tag: 1.1.3
+      pullPolicy: Always
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+  replicaCount: 2 # Should be 3 for production HA
+  nodeSelector:
+    kubernetes.io/os: linux
+    kubernetes.azure.com/agentpool: platform01
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+kubernetesClusterDomain: cluster.local
+metrics:
+  ports:
+  - name: https
+    port: 8443
+    protocol: TCP
+    targetPort: https
+  type: ClusterIP
+caBundle: # The Internal CTC CA bundle for the webhook server to use for serving TLS.
+  createSecret: false
+  name: ctc-corpissuingca
+  key: root-certs.pem
+# Webhook service for the controller manager
+webhookService:
+  ports:
+  - port: 443
+    protocol: TCP
+    targetPort: 9443
+  type: ClusterIP
+# Will create certificate for webhook comms if provided
+# Requires Cert-Manager to be installed on clusters
+  certificate:
+    create: true
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: ca-issuer # defined in bootstrap
+# ------------------------------------------------------
+# For clusters without Cert-Manager installed, the following can be used to scrap TLS cert from AKV
+# Certificate secret will be mounted via CSI driver
+  csiDriverTLSMount:
+    enabled: false

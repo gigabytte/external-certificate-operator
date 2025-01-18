@@ -1,0 +1,16 @@
+{{- if .Values.controllerManager.createRbac }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "chart.fullname" . }}-metrics-reader
+  labels:
+    app.kubernetes.io/component: kube-rbac-proxy
+    app.kubernetes.io/created-by: caas-certificate-distribution-operator
+    app.kubernetes.io/part-of: caas-certificate-distribution-operator
+  {{- include "chart.labels" . | nindent 4 }}
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
+{{- end }}

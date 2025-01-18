@@ -1,0 +1,65 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: export-{{ include "chart.fullname" . }}-validating-webhook-configuration
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "chart.fullname" . }}-serving-cert
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+webhooks:
+  - name: vexportcertificatesecret.kb.io
+    clientConfig:
+      {{- if .Values.caBundle.createSecret }}
+      caBundle: {{ .Values.caBundle.value | default "" | b64enc | quote }}
+      {{- end }}
+      service:
+        name: {{ include "chart.fullname" . }}-webhook-service
+        namespace: {{ .Release.Namespace }}
+        path: /validate-external-certificate-operator-io-v1alpha1-exportcertificatesecret
+    admissionReviewVersions:
+      - v1
+    failurePolicy: Fail
+    rules:
+      - apiGroups:
+          - external-certificate.io
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - exportcertificatesecrets
+    sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: import-{{ include "chart.fullname" . }}-validating-webhook-configuration
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "chart.fullname" . }}-serving-cert
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+webhooks:
+  - name: vimportcertificatesecret.kb.io
+    clientConfig:
+      {{- if .Values.caBundle.createSecret }}
+      caBundle: {{ .Values.caBundle.value | default "" | b64enc | quote }}
+      {{- end }}
+      service:
+        name: {{ include "chart.fullname" . }}-webhook-service
+        namespace: {{ .Release.Namespace }}
+        path: /validate-external-certificate-operator-io-v1alpha1-importcertificatesecret
+    admissionReviewVersions:
+      - v1
+    failurePolicy: Fail
+    rules:
+      - apiGroups:
+          - external-certificate.io
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - importcertificatesecrets
+    sideEffects: None

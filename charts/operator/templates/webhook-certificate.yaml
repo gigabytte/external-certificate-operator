@@ -1,0 +1,24 @@
+{{- if .Values.webhookService.certificate.create }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "chart.fullname" . }}-serving-cert
+  namespace: {{ .Release.Namespace }}
+spec:
+  secretName: {{ include "chart.fullname" . }}-serving-cert
+  secretTemplate:
+    annotations:
+      cert-manager.io/allow-direct-injection: "true"
+  issuerRef:
+    group: {{ .Values.webhookService.certificate.issuerRef.group }}
+    kind: {{ .Values.webhookService.certificate.issuerRef.kind }}
+    name: {{ .Values.webhookService.certificate.issuerRef.name }}
+  commonName: {{ include "chart.fullname" . }}-webhook
+  dnsNames:
+    - '{{ include "chart.fullname" . }}-webhook-service.{{ .Release.Namespace }}.svc'
+    - '{{ include "chart.fullname" . }}-webhook-service.{{ .Release.Namespace }}.svc.cluster.local'
+  usages:
+    - signing
+    - digital signature
+    - server auth
+{{- end }}

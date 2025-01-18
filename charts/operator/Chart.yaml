@@ -1,0 +1,7 @@
+# CRDs are installed with sister chart caas-certificate-distribution-operator-crd
+apiVersion: v2
+appVersion: 1.2.1
+description: Helm chart for caas-certificate-distribution-operator
+name: certificate-distribution-op
+type: application
+version: 1.2.1

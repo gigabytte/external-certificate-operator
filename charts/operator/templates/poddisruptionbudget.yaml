@@ -1,0 +1,13 @@
+{{- if .Values.controllerManager.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "chart.fullname" . }}-pdb
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.controllerManager.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      app: {{ include "chart.name" . }}
+{{- end }}

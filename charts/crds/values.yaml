@@ -1,0 +1,3 @@
+webhook:
+  service:
+    name: webhook-service

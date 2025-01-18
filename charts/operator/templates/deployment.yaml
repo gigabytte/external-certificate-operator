@@ -1,0 +1,131 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chart.fullname" . }}-controller-manager
+  labels:
+    app.kubernetes.io/component: manager
+    app.kubernetes.io/created-by: caas-certificate-distribution-operator
+    app.kubernetes.io/part-of: caas-certificate-distribution-operator
+    azure.workload.identity/use: "true"
+    control-plane: controller-manager
+  {{- include "chart.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.controllerManager.replicaCount }}
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+    {{- include "chart.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
+        control-plane: controller-manager
+      {{- include "chart.selectorLabels" . | nindent 8 }}
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+    spec:
+      nodeSelector:
+        {{- toYaml .Values.controllerManager.nodeSelector | nindent 12 }}
+      tolerations:
+        {{- toYaml .Values.controllerManager.tolerations | nindent 12 }}
+      containers:
+      - args: {{- toYaml .Values.controllerManager.manager.args | nindent 8 }}
+        command:
+        - /manager
+        env:
+        - name: KUBERNETES_CLUSTER_DOMAIN
+          value: {{ quote .Values.kubernetesClusterDomain }}
+        image: {{ .Values.controllerManager.manager.image.repository }}:{{ .Values.controllerManager.manager.image.tag
+          | default .Chart.AppVersion }}
+        imagePullPolicy: {{ .Values.controllerManager.manager.image.pullPolicy }}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: manager
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources: {{- toYaml .Values.controllerManager.manager.resources | nindent 10
+          }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        {{- if .Values.webhookService.csiDriverTLSMount.enabled }}
+        - mountPath: /mnt/secrets-store
+          name: csi-cert
+          readOnly: true
+        {{- end }}
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: serving-cert
+          readOnly: true
+        - mountPath: /etc/ssl/certs/registry-root.pem
+          name: ca-bundle
+          subPath: registry-root.pem
+      - args: {{- toYaml .Values.controllerManager.kubeRbacProxy.args | nindent 8 }}
+        env:
+        - name: KUBERNETES_CLUSTER_DOMAIN
+          value: {{ quote .Values.kubernetesClusterDomain }}
+        image: {{ .Values.controllerManager.kubeRbacProxy.image.repository }}:{{ .Values.controllerManager.kubeRbacProxy.image.tag
+          | default .Chart.AppVersion }}
+        imagePullPolicy: {{ .Values.controllerManager.kubeRbacProxy.image.pullPolicy }}
+        name: kube-rbac-proxy
+        ports:
+        - containerPort: 8443
+          name: https
+          protocol: TCP
+        resources: {{- toYaml .Values.controllerManager.kubeRbacProxy.resources | nindent
+          10 }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - mountPath: /etc/tls
+          name: kube-rbac-proxy-tls
+          readOnly: true
+      securityContext:
+        runAsNonRoot: true
+      serviceAccountName: {{ include "chart.serviceAccountName" . }}
+      terminationGracePeriodSeconds: 10
+      volumes:
+      {{- if .Values.webhookService.csiDriverTLSMount.enabled }}
+      - name: csi-cert
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: "{{ include "chart.fullname" . }}-spc"
+      - name: serving-cert
+        secret:
+          defaultMode: 420
+          secretName: '{{ (index .Values.webhookService.csiDriverTLSMount.k8sSecretObjects 0).secretName }}'
+      {{- else }}
+      - name: serving-cert
+        secret:
+          defaultMode: 420
+          secretName: '{{ include "chart.fullname" . }}-serving-cert'
+      {{- end }}
+      - name: ca-bundle
+        secret:
+          items:
+          - key: {{ default "ca.crt" .Values.caBundle.key }}
+            path: registry-root.pem
+          secretName: {{ default (printf "%s-ca-bundle" (include "chart.fullname" .)) .Values.caBundle.name }}
+      - name: kube-rbac-proxy-tls
+        secret:
+          defaultMode: 420
+          secretName: '{{ include "chart.fullname" . }}-serving-cert'
