@@ -47,6 +47,5 @@ tfplan
 
 # Tests
 
-caas-certificate-distribution-operator
 *.out
 .task

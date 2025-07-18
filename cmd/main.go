@@ -17,8 +17,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	certdistributionv1alpha1 "github.com/gigabytte/external-certificate-operator/api/v1alpha1"
-	"github.com/gigabytte/external-certificate-operator/internal/controller"
-	"github.com/gigabytte/external-certificate-operator/internal/log"
+	exportcertctrl "github.com/gigabytte/external-certificate-operator/internal/controllers/export"
+	importcertctrl "github.com/gigabytte/external-certificate-operator/internal/controllers/import"
+	"github.com/gigabytte/external-certificate-operator/internal/shared/log"
 )
 
 var (
@@ -48,7 +49,7 @@ func main() {
 		"Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.", // nolint:lll
 	)
 	flag.BoolVar(&secureMetrics, "metrics-secure", false, "If set the metrics endpoint is served securely")
-	flag.BoolVar(&enableHTTP2, "enable-http2", false, "If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.BoolVar(&enableHTTP2, "enable-http2", false, "If set, HTTP/2 will be enabled for the metrics and webhook servers") // nolint:lll
 	flag.StringVar(&allowedImportCrossNamespaces,
 		"allowed-import-cross-namespaces",
 		"",
@@ -116,10 +117,11 @@ func createManager(metricsAddr string, secureMetrics bool, probeAddr string, ena
 }
 
 func setupControllers(mgr ctrl.Manager) error {
-	if err := (&controller.ExportCertificateSecretReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	if err := (exportcertctrl.NewExportCertificateSecretReconciler(
+		mgr.GetClient(),
+		mgr.GetScheme(),
+		mgr.GetEventRecorderFor("exportcertificatesecret-controller"),
+	)).SetupWithManager(mgr); err != nil {
 		return err
 	}
 
@@ -130,7 +132,7 @@ func setupControllers(mgr ctrl.Manager) error {
 	}
 	certdistributionv1alpha1.SetAllowedNamespaces(allowedImportCrossNamespacesList)
 
-	if err := (&controller.ImportCertificateSecretReconciler{
+	if err := (&importcertctrl.ImportCertificateSecretReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {

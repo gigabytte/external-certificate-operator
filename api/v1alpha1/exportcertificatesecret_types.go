@@ -9,7 +9,6 @@ type ExportAzureKVProvider struct {
 	VaultUrl             string                 `json:"vaultUrl"`
 	ServiceAccountRef    ServiceAccountRef      `json:"serviceAccountRef"`
 	CertificateSecretRef []CertificateSecretRef `json:"certificateSecretRef"` // defined in general_types.go
-	ScanInterval         int                    `json:"scanInterval,omitempty"`
 	OnDeletePurge        bool                   `json:"onDeletePurge,omitempty"`
 }
 
@@ -22,7 +21,6 @@ type ExportCertificateSecretSpec struct {
 type ExportCertificateSecretStatus struct {
 	Conditions         []metav1.Condition     `json:"conditions,omitempty"`
 	RetryCount         int                    `json:"retryCount,omitempty"`
-	PreviousSecretRefs []CertificateSecretRef `json:"previousSecretRefs,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -46,4 +44,28 @@ type ExportCertificateSecretList struct {
 
 func init() {
 	SchemeBuilder.Register(&ExportCertificateSecret{}, &ExportCertificateSecretList{})
+}
+
+// supporting interface methods for ExportCertificateSecret
+func (r *ExportCertificateSecret) GetConditions() []metav1.Condition {
+	return r.Status.Conditions
+}
+
+func (r *ExportCertificateSecret) SetConditions(conditions []metav1.Condition) {
+	r.Status.Conditions = conditions
+}
+
+func (r *ExportCertificateSecret) GetAnnotations() map[string]string {
+	if r.Annotations == nil {
+		r.Annotations = make(map[string]string)
+	}
+	return r.Annotations
+}
+
+func (r *ExportCertificateSecret) GetRetryCount() int {
+	return r.Status.RetryCount
+}
+
+func (r *ExportCertificateSecret) SetRetryCount(count int) {
+	r.Status.RetryCount = count
 }

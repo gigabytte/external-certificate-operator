@@ -1,5 +1,6 @@
 # Build the manager binary
-FROM golang:1.22.6-alpine3.20 AS builder
+FROM golang:1.24.4-alpine3.22 AS builder
+
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -23,7 +24,7 @@ COPY internal/ internal/
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
 
 # Use of alpine instead of distroless due to requirement for openssl executable
-FROM alpine:3.20.3
+FROM alpine:3.22.0
 
 RUN apk add --no-cache \
     openssl \

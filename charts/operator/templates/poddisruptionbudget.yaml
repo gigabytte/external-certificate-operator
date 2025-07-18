@@ -9,5 +9,5 @@ spec:
   minAvailable: {{ .Values.controllerManager.podDisruptionBudget.minAvailable }}
   selector:
     matchLabels:
-      app: {{ include "chart.name" . }}
+      app.kubernetes.io/name: {{ include "chart.name" . }}
 {{- end }}

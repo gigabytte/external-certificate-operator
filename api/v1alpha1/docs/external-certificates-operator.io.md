@@ -36,7 +36,7 @@ Usage of /manager:
 
 ## external-certificate.io/v1alpha1
 
-Package v1alpha1 contains API Schema definitions for the cert-distribution v1alpha1 API group
+Package v1alpha1 contains API Schema definitions for the external-certificate-operator v1alpha1 API group
 
 ### Resource Types
 
@@ -70,7 +70,6 @@ _Appears in:_
 | `vaultUrl` _string_ | Url of Azure KeyVault instance where secrets will be stored |  |  |
 | `serviceAccountRef` _[ServiceAccountRef](#serviceaccountref)_ | Workload ID annotated service account running the `ExportCertificateSecret` resource | None | None |
 | `certificateSecretRef` _[CertificateSecretRef](#certificatesecretref)_ |  |  |  |
-| `ScanInterval` _string_ | Interval to scan destination Azure KeyVault for changes | 5 minutes | None |
 | `OnDeletePurge` _bool_ | Upon cleanup of `ExportCertificateSecret` secrets will be deleted from KeyVault with purge functionality | `true` | none |
 
 #### ExportCertificateSecret

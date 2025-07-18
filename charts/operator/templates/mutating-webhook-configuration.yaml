@@ -9,8 +9,8 @@ metadata:
 webhooks:
   - name: vexportcertificatesecret.kb.io
     clientConfig:
-      {{- if .Values.caBundle.createSecret }}
-      caBundle: {{ .Values.caBundle.value | default "" | b64enc | quote }}
+      {{- if .Values.caBundle.secret.value }}
+      caBundle: {{ .Values.caBundle.secret.value | b64enc | quote }}
       {{- end }}
       service:
         name: {{ include "chart.fullname" . }}-webhook-service
@@ -42,8 +42,8 @@ metadata:
 webhooks:
   - name: vimportcertificatesecret.kb.io
     clientConfig:
-      {{- if .Values.caBundle.createSecret }}
-      caBundle: {{ .Values.caBundle.value | default "" | b64enc | quote }}
+      {{- if .Values.caBundle.secret.value }}
+      caBundle: {{ .Values.caBundle.secret.value | b64enc | quote }}
       {{- end }}
       service:
         name: {{ include "chart.fullname" . }}-webhook-service

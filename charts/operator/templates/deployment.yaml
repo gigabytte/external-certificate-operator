@@ -4,8 +4,8 @@ metadata:
   name: {{ include "chart.fullname" . }}-controller-manager
   labels:
     app.kubernetes.io/component: manager
-    app.kubernetes.io/created-by: caas-certificate-distribution-operator
-    app.kubernetes.io/part-of: caas-certificate-distribution-operator
+    app.kubernetes.io/created-by: external-certificate-operator
+    app.kubernetes.io/part-of: external-certificate-operator
     azure.workload.identity/use: "true"
     control-plane: controller-manager
   {{- include "chart.labels" . | nindent 4 }}
@@ -42,6 +42,7 @@ spec:
           httpGet:
             path: /healthz
             port: 8081
+            scheme: HTTP
           initialDelaySeconds: 15
           periodSeconds: 20
         name: manager
@@ -53,6 +54,7 @@ spec:
           httpGet:
             path: /readyz
             port: 8081
+            scheme: HTTP
           initialDelaySeconds: 5
           periodSeconds: 10
         resources: {{- toYaml .Values.controllerManager.manager.resources | nindent 10
@@ -122,9 +124,9 @@ spec:
       - name: ca-bundle
         secret:
           items:
-          - key: {{ default "ca.crt" .Values.caBundle.key }}
+          - key: {{ default "ca.crt" .Values.caBundle.secret.key }}
             path: registry-root.pem
-          secretName: {{ default (printf "%s-ca-bundle" (include "chart.fullname" .)) .Values.caBundle.name }}
+          secretName: {{ default (printf "%s-ca-bundle" (include "chart.fullname" .)) .Values.caBundle.secret.name }}
       - name: kube-rbac-proxy-tls
         secret:
           defaultMode: 420

@@ -60,3 +60,20 @@ Create the name of the service account to use
 {{- default "default" .Values.controllerManager.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Get the privateKey configuration with defaults.
+*/}}
+{{- define "chart.privateKey" -}}
+{{- if hasKey .Values.webhookService.certificate "privateKey" }}
+{{- with .Values.webhookService.certificate.privateKey }}
+privateKey:
+  algorithm: {{ .algorithm | default "RSA" }}
+  size: {{ .size | default 4096 }}
+{{- end }}
+{{- else }}
+privateKey:
+  algorithm: "RSA"
+  size: 4096
+{{- end }}
+{{- end }}

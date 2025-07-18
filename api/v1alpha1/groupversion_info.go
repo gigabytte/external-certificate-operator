@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package v1alpha1 contains API Schema definitions for the cert-distribution v1alpha1 API group
+// Package v1alpha1 contains API Schema definitions for the external-certificate-operator v1alpha1 API group
 // +kubebuilder:object:generate=true
 // +groupName=external-certificate.io
 package v1alpha1
