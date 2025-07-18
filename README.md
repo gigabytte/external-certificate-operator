@@ -2,48 +2,25 @@
 
 ## External Certificate Operator is designed to export/import certificates issued by Cert Manager to and from a cluster while using Azure KeyVault as the central location for certificate storage
 
-### Use Cases
-
-- Exporting PEM/P12 certificate formats (any format supported by Cert-Manager) to AKV defined from given namespace in a centralized and dedticated Cert Manager cluster
-- Importing certificate secrets into a namespace from AKV as a k8s secret. Destination namespace outside of where the `ImportCertificateSecret` manifest can be defined for use cases where secrets must sit in a certain NS for ingress .. etc (ie. Istio)
-
-#### Why not use External Secrets Operator?
-
-ESO is great highly regarded and CNCF adopted technology and such be primiarly considered as a first choice for secrets lifecycling to and from a k8s clutser
-However it does have it limits when it comes to secret lifecyling for secrets into Azure Key Vault spefically regarding AKV required PEM/P12 formats. Something else to consider is tool strawl as well in your clutser, installing 3 tools to get the job done and having to keep 3 tools happy is usally considered a higher operational burden than a tools that less feature rich however fits the requiremnts of a given role.
-The repo also servers a personal challenge to myself to gain more insight into the internal workings of k8s.
-
 ### High Level Architecture
 
-![Architecture](internal/controller/images/caas-certificate-distribution-operator.png)
+![Architecture](api/v1alpha1/docs/images/certificate-distribution-operator.jpeg)
+
+#### So how does it work?
+
+**Steps 4 to 7 will continue flow throughout the lifecycle of the certificate from updates to renewal making sure your certificate secrets are always available in your Azure KeyVault**
+
+1. User defines there certificate and export certificate secret manifest in there assigned namespace on the EACM platform
+2. Manifests are deployed by the Kubernetes platform
+3. Cert Manager assess your manifest based on your specified attributes and submits a request for validation against [policy](https://canadian-tire.atlassian.net/wiki/spaces/CDCC/pages/2961343457/Certificate+Policy) in your namespace
+4. Once approved Cert Manager creates a certificate based on your specified attributes
+5. Cert Manager then makes a call to the Venafi TPP platform to sign the private key of said certificate
+6. Cert Manager creates a secret local to the Kubernetes platform containing your certificate and private key
+7. The Export Certificate Operator will then copy the contents of the secret and place it in your Azure KeyVault based on the attributes in your export certificate secret manifest defined in step 1
 
 ### Contributing
 
-The project includes a set of bash scripts which focuses on easily spinning up and down a testing enviroment for the oprator. All scripts sit under `integration/scripts`
-
-#### Docker Build and Push
-
-The DockerBuild and push script located at `integration/scripts/docker-build-push.sh` will build, log into ACR and push image to ACR for consumption by AKS cluster
-
-`./integration/scripts/docker-build-push.sh -r fooacr -i caas-certificate-distribution-operator -t 0.1.0`
-
-#### Operator deployment rollout
-
-The Operatore rollout script `integration/scripts/rollout-new-controller-ver.sh` will perform a rollout restart on the Operator deployment manifest to force the recreation of the operator pods in turns pulling down the latest version of the operator image from ACR. It best to tie this into your docker build push command ... see below
-
-`./integration/scripts/docker-build-push.sh -r fooacr -i caas-certificate-distribution-operator -t 0.1.0 && ./integration/scripts/rollout-new-controller-ver.sh -n cert-dist-op-ns -d caas-certificate-distribution-operator-controller-manager`
-
-#### Infra setup
-
-Infra setup bash script will run all three Terraform workspaces under `integration/scripts/env-setup.sh`
-
-- `integration/terraform/infra`
-- `integration/terraform/cert-manager`
-- `integration/terraform/operator`
-
-The infra workspace requires the dev define there Entra ID object ID to give them Admin access to the destionation Azure KeyVault for validation during testing `var.LOCAL_DEV_USER_OBJECT_ID`
-
-If chnages to the helm charts are made and validation of said changes are required post init deployment the version of the helm chart defined in `Chart.yaml` must be chnaged in order for the helm TF provider to pickuo chnages and redploy.
+The project includes a set of bash scripts which focuses on easily spinning up and down a testing environment for the operator. All scripts sit under `integration/scripts`
 
 #### Pipelining
 
@@ -52,19 +29,15 @@ If chnages to the helm charts are made and validation of said changes are requir
 
 ### CRD Api Docs
 
-`api/v1alpha1/docs/external-certificate.io.md`
+`api/v1alpha1/docs/external-certificates-operator.io.md`
 
 #### ExportCertificateSecret spec
 
 ExportCertificateSecret will pickup a given set of `crt` certificate and key values from a k8s secret created by Cert Manager and push said secrets to an Azure Key Vault. Authentication via an annotated service account reference by name in ExportCertificateSecret authenticated via workload identity
 
-More examples can be found at `/config/samples/cert-distribution_v1alpha1_exportcertificatesecrets.yaml
-
 #### ImportCertificateSecret spec
 
 ImportCertificateSecret will pull down a given set of secrets from Azure KeyVault and create a k8s secret in a given namespace where ImportCertificateSecret is created with its contents being the specified destinationKeyName. Authentication via an annotated service account reference by name in ExportCertificateSecret authenticated via workload identity.
-
-More examples can be found at `/config/samples/cert-distribution_v1alpha1_importcertificatesecrets.yaml`
 
 ### Architecture decisions
 
@@ -74,21 +47,26 @@ K8s controllers run on standard reconciliation loops based on defined time delay
 
 However the real world is hardly perfect and errors do occur which is why both controllers implement an exponential time delay backoff until a max of 30 minutes to prevent exhaustion of requests/ resources.
 
-- *DELETE Event* - Controllers will retry at the below interval before deciding to drop process and continue without 100% cleanup
-
-First Retry: (30 seconds)
-Second Retry: (1 minute)
-Third Retry: (2 minutes)
-Fourth Retry: (4 minutes)
-Fifth Retry: (8 minutes)
-
-- *NORMAL Retry Event from unknown error* - Controllers will retry at the below interval indefinitely until user corrects error
+- *Retry Event from unknown error* - Controllers will retry at the below interval indefinitely until user corrects error
 
 First Retry: (2 minutes)
 Second Retry: (4 minute)
 Third Retry: (8 minutes)
 Fourth Retry: (16 minutes)
 Fifth Retry: (32 minutes, but capped at 30 mins)
+
+### Reconcile conditions
+
+#### `ExportCertificateSecret`
+
+- `Create, Update, Delete` of the `ExportCertificateSecret` object
+- `Create, Update` of the target secret defined in `ExportCertificateSecret` object
+
+#### `ImportCertificateSecret`
+
+- `Create, Update, Delete` of the `ImportCertificateSecret` object
+- `Create, Update, Delete` of the target secret defined in `ImportCertificateSecret` object
+- `Time based` reconciles every x minutes defined in `scanInterval` attribute in the `ImportCertificateSecret` object, this is outside of the normal lifecycle reconcile events
 
 ### Finalizers
 
@@ -137,3 +115,5 @@ $ k get secret sample -n foo -o json | jq
 ### To Do
 
 - E2E testing
+- Implement new eventhandler logic in ImportCertificateSecret controller logic, currently only used in Export
+- Metrics

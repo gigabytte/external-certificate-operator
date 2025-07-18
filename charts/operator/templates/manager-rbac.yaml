@@ -104,8 +104,8 @@ metadata:
   name: {{ include "chart.fullname" . }}-manager-rolebinding
   labels:
     app.kubernetes.io/component: rbac
-    app.kubernetes.io/created-by: caas-certificate-distribution-operator
-    app.kubernetes.io/part-of: caas-certificate-distribution-operator
+    app.kubernetes.io/created-by: external-certificate-operator
+    app.kubernetes.io/part-of: external-certificate-operator
   {{- include "chart.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io

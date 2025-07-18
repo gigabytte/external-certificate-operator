@@ -23,9 +23,6 @@ var _ webhook.Defaulter = &ExportCertificateSecret{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
 func (r *ExportCertificateSecret) Default() {
-	if r.Spec.AzureKV.ScanInterval == 0 {
-		r.Spec.AzureKV.ScanInterval = 30
-	}
 	// Set OnDeletePurge to true by default
 	if !r.Spec.AzureKV.OnDeletePurge {
 		r.Spec.AzureKV.OnDeletePurge = true

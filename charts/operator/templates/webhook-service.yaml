@@ -4,8 +4,8 @@ metadata:
   name: {{ include "chart.fullname" . }}-webhook-service
   labels:
     app.kubernetes.io/component: webhook
-    app.kubernetes.io/created-by: caas-certificate-distribution-operator
-    app.kubernetes.io/part-of: caas-certificate-distribution-operator
+    app.kubernetes.io/created-by: external-certificate-operator
+    app.kubernetes.io/part-of: external-certificate-operator
   {{- include "chart.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.webhookService.type }}

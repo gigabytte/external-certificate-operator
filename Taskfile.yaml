@@ -1,73 +1,54 @@
----
 
 version: '3'
 
-env:
-  OUT: caas-certificate-distribution-operator
-  COV_FILE: cover.out
-  ADO_COV_FILE: cover.xml
-  ADO_TEST_FILE: "test-report.xml"
-  SRC: ./cmd/main.go
+vars:
+  GOPATH:
+    sh: echo "$(go env GOPATH)" | sed 's/ /\\ /g' | sed 's/-/\\-/g'
 
 tasks:
-  default:
-    cmds:
-      - task: test
-      - task: lint
-      - task: generate-test-reports
-
-  format:
-    cmds:
-      - go fmt ./...
-
   build:
-    deps: [check-deps]
-    cmds:
-      - env GOOS=darwin GOARCH=amd64 go build -o {{.OUT}} {{.SRC}}
-    sources:
-      - ./cmd/*.go
-      - ./api/*.go
-      - ./internal/*.go
-    generates:
-      - ./{{.OUT}}
+    deps: [linux-amd64]
 
-  test:
-    deps: [build]
+  linux-amd64:
+    desc: Build for Linux amd64
     cmds:
-      # Skip utils package from coverage
-      - go test $(go list ./... | grep -v api/ ) -race -v -coverprofile={{.COV_FILE}}
-
-  lint:
-    deps: [install-tools]
-    cmds:
-      - golangci-lint run --timeout=5m0s
+      - export CGO_ENABLED=0 GOOS=linux GOARCH=amd64 && go build -o handler-linux-amd64 cmd/main.go
 
   clean:
     cmds:
-      - rm -f {{.OUT}} {{.COV_FILE}} {{.ADO_COV_FILE}} {{.ADO_TEST_FILE}}
-
-  check-deps:
-    cmds:
-      - go mod tidy
-      - go mod verify
+      - rm -f handler-* cover.out test-report.xml cover.xml
 
   install-tools:
+    status:
+      - test -f "{{.GOPATH}}/bin/gotestsum"
+      - test -f "{{.GOPATH}}/bin/golangci-lint"
+      - test -f "{{.GOPATH}}/bin/gocover-cobertura"
     cmds:
-      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-      - go install gotest.tools/gotestsum@latest
-      - go install github.com/axw/gocov/gocov@latest
+      - |
+        go install gotest.tools/gotestsum@v1.12.0
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
+          | sh -s -- -b "{{.GOPATH}}/bin" v2.1.6
+        go get github.com/boumenot/gocover-cobertura
+
+
+  test:
+    deps: [install-tools]
+    env:
+      CGO_ENABLED: 1
+      GO_ROOT: '{{.GO_ROOT}}'
+    cmds:
+      - |
+        echo "Running tests..."
+        gotestsum --junitfile=test-report.xml --format=testname \
+          $(go list ./... ) \
+          -v -race -coverprofile=cover.out
+  lint:
+    deps: [install-tools]
+    cmds:
+      - golangci-lint run --timeout=5m0s --tests=false
 
   generate-test-reports:
-    deps: [install-tools, test]
+    deps: [test]
     cmds:
-      - gotestsum --junitfile={{.ADO_TEST_FILE}}
-      - gocov convert {{.COV_FILE}} | gocov-xml > {{.ADO_COV_FILE}}
-
-  generate-html-coverage:
-    deps: [install-tools, test]
-    cmds:
-      - go tool cover -html={{.COV_FILE}} -o coverage.html
-
-  update-deps:
-    cmds:
-      - go get -u ./...
+      - |
+        gocover-cobertura < cover.out > cover.xml

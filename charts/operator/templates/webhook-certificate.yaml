@@ -9,16 +9,20 @@ spec:
   secretTemplate:
     annotations:
       cert-manager.io/allow-direct-injection: "true"
+  emailAddresses:
+    - {{ .Values.webhookService.certificate.ownerEmail }}
   issuerRef:
     group: {{ .Values.webhookService.certificate.issuerRef.group }}
     kind: {{ .Values.webhookService.certificate.issuerRef.kind }}
     name: {{ .Values.webhookService.certificate.issuerRef.name }}
   commonName: {{ include "chart.fullname" . }}-webhook
+  duration: {{ .Values.webhookService.certificate.duration | default "8760h" }}
+  renewBefore: {{ .Values.webhookService.certificate.renewBefore | default "720h" }}
   dnsNames:
     - '{{ include "chart.fullname" . }}-webhook-service.{{ .Release.Namespace }}.svc'
     - '{{ include "chart.fullname" . }}-webhook-service.{{ .Release.Namespace }}.svc.cluster.local'
+{{- include "chart.privateKey" . | nindent 2 }}
   usages:
-    - signing
-    - digital signature
+    - client auth
     - server auth
 {{- end }}
